@@ -1,33 +1,23 @@
-// Content script - runs on every page to extract additional subdomains
+// Firefox Content Script
 class ContentExtractor {
   constructor() {
     this.init()
   }
 
   init() {
-    // Wait for page to load
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => this.analyze())
     } else {
       this.analyze()
     }
-
-    // Monitor dynamic content changes
     this.observeChanges()
   }
 
   analyze() {
     try {
-      // Extract from page HTML
       this.extractFromHTML()
-
-      // Extract from inline scripts
       this.extractFromScripts()
-
-      // Extract from CSS
       this.extractFromCSS()
-
-      // Monitor AJAX/Fetch requests
       this.interceptRequests()
     } catch (error) {
       console.log('Content analysis error:', error)
@@ -35,13 +25,9 @@ class ContentExtractor {
   }
 
   extractFromHTML() {
-    // Get all elements with URLs
-    const elements = document.querySelectorAll(
-      '[href], [src], [action], [data-url]'
-    )
-
+    const elements = document.querySelectorAll('[href], [src], [action], [data-url]')
     elements.forEach((element) => {
-      ;['href', 'src', 'action', 'data-url'].forEach((attr) => {
+      ['href', 'src', 'action', 'data-url'].forEach((attr) => {
         const url = element.getAttribute(attr)
         if (url) {
           this.sendSubdomain(url, 'HTML')
@@ -51,9 +37,7 @@ class ContentExtractor {
   }
 
   extractFromScripts() {
-    // Get all script tags
     const scripts = document.querySelectorAll('script')
-
     scripts.forEach((script) => {
       if (script.textContent) {
         this.extractSubdomainsFromText(script.textContent, 'JavaScript')
@@ -62,9 +46,7 @@ class ContentExtractor {
   }
 
   extractFromCSS() {
-    // Get all style tags and external stylesheets
     const styles = document.querySelectorAll('style, link[rel="stylesheet"]')
-
     styles.forEach((style) => {
       if (style.textContent) {
         this.extractSubdomainsFromText(style.textContent, 'CSS')
@@ -74,46 +56,55 @@ class ContentExtractor {
 
   extractSubdomainsFromText(text, source) {
     const patterns = [
-      // URLs: https://api.example.com
-      /(?:https?:\/\/)([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}/g,
-
-      // Domain patterns: api.example.com
-      /(?:^|[^a-zA-Z0-9\-\.])([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(?=[^a-zA-Z0-9\-\.]|$)/g,
-
+      // Full URLs: https://api.example.com
+      /https?:\/\/([a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]*\.)+[a-zA-Z]{2,}/g,
       // Quoted domains: "api.example.com"
-      /["']([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}["']/g,
+      /["']([a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]*\.)+[a-zA-Z]{2,}["']/g,
     ]
 
     patterns.forEach((pattern) => {
       let match
       while ((match = pattern.exec(text)) !== null) {
-        this.sendSubdomain(match[0], source)
+        let url = match[0].replace(/["']/g, '')
+        if (!url.startsWith('http')) {
+          url = 'https://' + url
+        }
+        this.sendSubdomain(url, source)
       }
     })
   }
 
   interceptRequests() {
-    // Override fetch
-    const originalFetch = window.fetch
-    window.fetch = (...args) => {
-      if (args[0]) {
-        this.sendSubdomain(args[0].toString(), 'Fetch')
+    try {
+      // Try to intercept fetch if possible
+      if (window.fetch && typeof window.fetch === 'function') {
+        const originalFetch = window.fetch
+        window.fetch = (...args) => {
+          if (args[0]) {
+            this.sendSubdomain(args[0].toString(), 'Fetch')
+          }
+          return originalFetch.apply(window, args)
+        }
       }
-      return originalFetch.apply(window, args)
+    } catch (e) {
+      console.log('Cannot intercept fetch:', e)
     }
 
-    // Override XMLHttpRequest
-    const originalOpen = XMLHttpRequest.prototype.open
-    XMLHttpRequest.prototype.open = function (method, url, ...rest) {
-      if (url) {
-        contentExtractor.sendSubdomain(url, 'AJAX')
+    try {
+      // Intercept XMLHttpRequest
+      const originalOpen = XMLHttpRequest.prototype.open
+      XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+        if (url) {
+          contentExtractor.sendSubdomain(url, 'AJAX')
+        }
+        return originalOpen.apply(this, [method, url, ...rest])
       }
-      return originalOpen.apply(this, [method, url, ...rest])
+    } catch (e) {
+      console.log('Cannot intercept XMLHttpRequest:', e)
     }
   }
 
   observeChanges() {
-    // Watch for dynamic content changes
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
@@ -131,12 +122,8 @@ class ContentExtractor {
   }
 
   analyzeNewElement(element) {
-    // Check new element for URLs
-    if (
-      element.matches &&
-      element.matches('[href], [src], [action], [data-url]')
-    ) {
-      ;['href', 'src', 'action', 'data-url'].forEach((attr) => {
+    if (element.matches && element.matches('[href], [src], [action], [data-url]')) {
+      ['href', 'src', 'action', 'data-url'].forEach((attr) => {
         const url = element.getAttribute(attr)
         if (url) {
           this.sendSubdomain(url, 'Dynamic')
@@ -144,12 +131,9 @@ class ContentExtractor {
       })
     }
 
-    // Check child elements
-    const children = element.querySelectorAll(
-      '[href], [src], [action], [data-url]'
-    )
+    const children = element.querySelectorAll('[href], [src], [action], [data-url]')
     children.forEach((child) => {
-      ;['href', 'src', 'action', 'data-url'].forEach((attr) => {
+      ['href', 'src', 'action', 'data-url'].forEach((attr) => {
         const url = child.getAttribute(attr)
         if (url) {
           this.sendSubdomain(url, 'Dynamic')
@@ -161,29 +145,43 @@ class ContentExtractor {
   sendSubdomain(url, source) {
     try {
       const subdomain = this.extractSubdomain(url)
+      console.log('Checking subdomain:', subdomain, 'from:', url, 'source:', source)
       if (subdomain && this.isValidSubdomain(subdomain)) {
+        console.log('Valid subdomain found:', subdomain)
         // Send to background script
-        chrome.runtime.sendMessage({
-          type: 'subdomain_found',
-          subdomain: subdomain,
-          source: source,
-          url: window.location.href,
-        })
+        try {
+          if (typeof browser !== 'undefined' && browser.runtime) {
+            browser.runtime.sendMessage({
+              type: 'subdomain_found',
+              subdomain: subdomain,
+              source: source,
+              url: window.location.href,
+            })
+          } else if (typeof chrome !== 'undefined' && chrome.runtime) {
+            chrome.runtime.sendMessage({
+              type: 'subdomain_found',
+              subdomain: subdomain,
+              source: source,
+              url: window.location.href,
+            })
+          }
+          console.log('Message sent to background:', subdomain)
+        } catch (msgError) {
+          console.log('Failed to send message:', msgError)
+        }
       }
     } catch (error) {
-      // Ignore errors
+      console.log('Error in sendSubdomain:', error)
     }
   }
 
   extractSubdomain(url) {
     try {
-      // Handle relative URLs
       if (url.startsWith('/')) {
         url = window.location.origin + url
       } else if (!url.includes('://')) {
         url = 'https://' + url
       }
-
       const urlObj = new URL(url)
       return urlObj.hostname
     } catch {
@@ -198,10 +196,11 @@ class ContentExtractor {
       !subdomain.startsWith('.') &&
       !subdomain.endsWith('.') &&
       !/^\d+\.\d+\.\d+\.\d+$/.test(subdomain) && // Not an IP
-      subdomain.length > 3
+      subdomain.length > 3 &&
+      /^[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,}/.test(subdomain) && // Valid format
+      !subdomain.includes('92m') // Filter out invalid patterns
     )
   }
 }
 
-// Initialize content extractor
 const contentExtractor = new ContentExtractor()

@@ -1,18 +1,23 @@
 {
-  "manifest_version": 3,
+  "manifest_version": 2,
   "name": "Subdomain Extractor",
   "version": "1.0",
   "description": "Automatically extracts subdomains from URLs and file content",
 
-  "permissions": ["webRequest", "storage", "activeTab"],
-
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "webRequest",
+    "storage",
+    "activeTab",
+    "<all_urls>",
+    "https://script.google.com/*"
+  ],
 
   "background": {
-    "service_worker": "background.js"
+    "scripts": ["background.js"],
+    "persistent": true
   },
 
-  "action": {
+  "browser_action": {
     "default_popup": "popup.html",
     "default_title": "View Extracted Subdomains"
   },
@@ -25,9 +30,5 @@
     }
   ],
 
-  "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
-  }
+  "web_accessible_resources": ["config.js"]
 }

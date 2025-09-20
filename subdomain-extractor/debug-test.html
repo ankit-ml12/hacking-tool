@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Subdomain Extractor Test</title>
+</head>
+<body>
+    <h1>Test Page for Subdomain Extraction</h1>
+    
+    <!-- Test URLs in HTML -->
+    <a href="https://api.github.com">API Link</a>
+    <img src="https://cdn.example.com/image.jpg" alt="CDN Image">
+    <form action="https://submit.test.com/form">
+        <input type="submit" value="Submit">
+    </form>
+    
+    <!-- Test JavaScript with URLs -->
+    <script>
+        // Test fetch calls
+        fetch('https://api.test.com/data');
+        
+        // Test variables with domains
+        const apiUrl = 'https://backend.example.com/api';
+        const cdnUrl = 'cdn.assets.com';
+        
+        // Test AJAX
+        const xhr = new XMLHttpRequest();
+        xhr.open('GET', 'https://ajax.example.com/endpoint');
+    </script>
+    
+    <!-- Test CSS with URLs -->
+    <style>
+        body {
+            background-image: url('https://images.example.com/bg.jpg');
+        }
+    </style>
+    
+    <p>Open Firefox console and extension popup to see if subdomains are detected.</p>
+</body>
+</html>

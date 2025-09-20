@@ -14,8 +14,10 @@ class PopupManager {
 
   async loadSubdomains() {
     try {
-      const result = await chrome.storage.local.get(['subdomains'])
+      const storageAPI = (typeof browser !== 'undefined' && browser.storage) ? browser.storage : chrome.storage
+      const result = await storageAPI.local.get(['subdomains'])
       this.subdomains = result.subdomains || []
+      console.log('Loaded subdomains:', this.subdomains.length)
     } catch (error) {
       console.error('Error loading subdomains:', error)
       this.subdomains = []
@@ -34,9 +36,22 @@ class PopupManager {
     // Clear button
     document.getElementById('clearBtn').addEventListener('click', async () => {
       if (confirm('Clear all collected subdomains?')) {
-        await chrome.storage.local.clear()
+        const storageAPI = (typeof browser !== 'undefined' && browser.storage) ? browser.storage : chrome.storage
+        await storageAPI.local.clear()
         this.subdomains = []
         this.render()
+      }
+    })
+
+    // Sync button
+    document.getElementById('syncBtn').addEventListener('click', async () => {
+      try {
+        const runtimeAPI = (typeof browser !== 'undefined' && browser.runtime) ? browser.runtime : chrome.runtime
+        await runtimeAPI.sendMessage({ type: 'manual_sync' })
+        alert('Sync triggered! Check console for results.')
+      } catch (error) {
+        console.error('Sync error:', error)
+        alert('Sync failed: ' + error.message)
       }
     })
 
@@ -60,7 +75,8 @@ class PopupManager {
 
   async updateCurrentDomain() {
     try {
-      const [tab] = await chrome.tabs.query({
+      const tabsAPI = (typeof browser !== 'undefined' && browser.tabs) ? browser.tabs : chrome.tabs
+      const [tab] = await tabsAPI.query({
         active: true,
         currentWindow: true,
       })

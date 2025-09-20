@@ -1,106 +1,155 @@
-// Background script - monitors all network requests
+// Firefox Background Script with Google Sheets Integration
 class SubdomainExtractor {
   constructor() {
     this.subdomains = new Set()
-    this.currentTabId = null
+    this.pendingSync = []
+    this.lastSyncTime = 0
     this.init()
   }
 
   init() {
-    // Listen to all web requests
-    chrome.webRequest.onBeforeRequest.addListener(
+    // Listen to web requests
+    const webRequestAPI = (typeof browser !== 'undefined' && browser.webRequest) ? browser.webRequest : chrome.webRequest
+    webRequestAPI.onBeforeRequest.addListener(
       (details) => this.handleRequest(details),
       { urls: ['<all_urls>'] }
     )
 
-    // Track active tab
-    chrome.tabs.onActivated.addListener((activeInfo) => {
-      this.currentTabId = activeInfo.tabId
-    })
-
-    // Clear data when navigating to new domain
-    chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-      if (changeInfo.status === 'loading' && tab.url) {
-        const domain = this.extractDomain(tab.url)
-        if (domain !== this.lastDomain) {
-          this.clearSubdomains()
-          this.lastDomain = domain
-        }
+    // Listen for messages from content script
+    const messageHandler = (message, sender) => {
+      console.log('Background received message:', message)
+      if (message.type === 'subdomain_found') {
+        this.addSubdomain(message.subdomain, message.source)
+      } else if (message.type === 'manual_sync') {
+        console.log('Manual sync triggered')
+        this.syncToGoogleSheets()
+        return Promise.resolve({ success: true })
       }
-    })
+    }
+    
+    if (typeof browser !== 'undefined' && browser.runtime) {
+      browser.runtime.onMessage.addListener(messageHandler)
+    } else if (typeof chrome !== 'undefined' && chrome.runtime) {
+      chrome.runtime.onMessage.addListener(messageHandler)
+    }
+
+    // Auto-sync to Google Sheets
+    setInterval(() => this.syncToGoogleSheets(), CONFIG.SYNC_INTERVAL)
   }
 
   async handleRequest(details) {
     try {
-      // Extract subdomain from URL
       const urlSubdomain = this.extractSubdomain(details.url)
       if (urlSubdomain) {
         this.addSubdomain(urlSubdomain, 'URL')
-      }
-
-      // Only process certain file types for content analysis
-      if (this.shouldAnalyzeContent(details.url)) {
-        this.analyzeFileContent(details.url)
       }
     } catch (error) {
       console.log('Error handling request:', error)
     }
   }
 
-  shouldAnalyzeContent(url) {
-    const contentTypes = ['.js', '.html', '.htm', '.css', '.json', '.xml']
-    return (
-      contentTypes.some((type) => url.toLowerCase().includes(type)) ||
-      url.includes('api') ||
-      url.includes('ajax')
-    )
-  }
+  addSubdomain(subdomain, source) {
+    console.log('Adding subdomain:', subdomain, 'source:', source)
+    if (!this.isValidSubdomain(subdomain)) {
+      console.log('Invalid subdomain rejected:', subdomain)
+      return
+    }
 
-  async analyzeFileContent(url) {
-    try {
-      const response = await fetch(url)
-      const content = await response.text()
+    const subdomainData = {
+      domain: subdomain,
+      source: source,
+      timestamp: Date.now(),
+      synced: false
+    }
 
-      // Extract subdomains from file content
-      const contentSubdomains = this.extractSubdomainsFromText(content)
-      contentSubdomains.forEach((subdomain) => {
-        this.addSubdomain(subdomain, 'Content')
-      })
-    } catch (error) {
-      // Ignore fetch errors (CORS, etc.)
+    const key = JSON.stringify({ domain: subdomain, source: source })
+    if (!this.subdomains.has(key)) {
+      this.subdomains.add(key)
+      this.pendingSync.push(subdomainData)
+      console.log('Subdomain added to pending sync:', subdomain)
+      this.saveToStorage()
     }
   }
 
-  extractSubdomainsFromText(text) {
-    const subdomains = new Set()
+  async syncToGoogleSheets() {
+    console.log('Sync check - pending items:', this.pendingSync.length)
+    if (this.pendingSync.length === 0) return
 
-    // Multiple regex patterns for different formats
-    const patterns = [
-      // Standard URLs: https://api.example.com
-      /(?:https?:\/\/)([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(?:\/[^\s"']*)?/g,
-
-      // Domain only: api.example.com
-      /(?:^|[^a-zA-Z0-9\-])([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(?=[^a-zA-Z0-9\-]|$)/g,
-
-      // Quoted strings: "api.example.com"
-      /["']([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}["']/g,
-
-      // URL encoded: %2F%2Fapi.example.com
-      /%2F%2F([a-zA-Z0-9](?:[a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}/g,
-    ]
-
-    patterns.forEach((pattern) => {
-      let match
-      while ((match = pattern.exec(text)) !== null) {
-        const found = match[0].replace(/["'%2F]/g, '').replace(/^\/\//, '')
-        const subdomain = this.extractSubdomain('https://' + found)
-        if (subdomain && this.isValidSubdomain(subdomain)) {
-          subdomains.add(subdomain)
-        }
+    let batch = []
+    try {
+      batch = this.pendingSync.splice(0, CONFIG.BATCH_SIZE)
+      console.log('Syncing batch:', batch.length, 'items')
+      
+      const result = await this.appendToSheet(batch)
+      
+      // Check if partial sync occurred
+      if (result.added < result.total_requested) {
+        console.log(`Partial sync: ${result.added}/${result.total_requested} items`)
+        // Re-add unprocessed items
+        const unprocessed = batch.slice(result.added)
+        this.pendingSync.unshift(...unprocessed)
       }
+      
+      console.log(`Synced ${result.added} subdomains to Google Sheets`)
+    } catch (error) {
+      console.error('Google Sheets sync failed:', error)
+      // Re-add failed items to pending with retry limit
+      if (batch.length > 0) {
+        batch.forEach(item => {
+          item.retryCount = (item.retryCount || 0) + 1
+          if (item.retryCount <= 3) { // Max 3 retries
+            this.pendingSync.push(item)
+          } else {
+            console.log('Dropping item after 3 retries:', item.domain)
+          }
+        })
+      }
+    }
+  }
+
+  async appendToSheet(subdomains) {
+    console.log('Sending to Apps Script URL:', CONFIG.APPS_SCRIPT_URL)
+    
+    const payload = {
+      action: 'add_subdomains',
+      subdomains: subdomains.map(sub => ({
+        domain: sub.domain,
+        source: sub.source,
+        timestamp: sub.timestamp,
+        origin: 'Firefox Extension'
+      }))
+    }
+    
+    console.log('Payload:', payload)
+
+    const response = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
     })
 
-    return Array.from(subdomains)
+    console.log('Response status:', response.status)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('Apps Script error response:', errorText)
+      throw new Error(`Apps Script error: ${response.status} - ${errorText}`)
+    }
+
+    const responseText = await response.text()
+    console.log('Apps Script raw response:', responseText)
+    
+    try {
+      const result = JSON.parse(responseText)
+      console.log('Apps Script parsed response:', result)
+      return result
+    } catch (parseError) {
+      console.error('Failed to parse response as JSON:', parseError)
+      console.error('Raw response was:', responseText)
+      throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}`)
+    }
   }
 
   extractSubdomain(url) {
@@ -112,52 +161,39 @@ class SubdomainExtractor {
     }
   }
 
-  extractDomain(url) {
-    try {
-      const hostname = new URL(url).hostname
-      const parts = hostname.split('.')
-      return parts.slice(-2).join('.')
-    } catch {
-      return null
-    }
-  }
-
   isValidSubdomain(subdomain) {
     return (
       subdomain &&
       subdomain.includes('.') &&
       !subdomain.startsWith('.') &&
       !subdomain.endsWith('.') &&
-      !/^\d+\.\d+\.\d+\.\d+$/.test(subdomain)
-    ) // Not an IP
-  }
-
-  addSubdomain(subdomain, source) {
-    const subdomainData = {
-      domain: subdomain,
-      source: source,
-      timestamp: Date.now(),
-    }
-
-    this.subdomains.add(JSON.stringify(subdomainData))
-    this.saveToStorage()
-  }
-
-  clearSubdomains() {
-    this.subdomains.clear()
-    this.saveToStorage()
+      !/^\d+\.\d+\.\d+\.\d+$/.test(subdomain) &&
+      subdomain.length > 3
+    )
   }
 
   async saveToStorage() {
-    const subdomainArray = Array.from(this.subdomains).map((s) => JSON.parse(s))
-    await chrome.storage.local.set({ subdomains: subdomainArray })
+    const subdomainArray = Array.from(this.subdomains).map(s => JSON.parse(s))
+    const storageAPI = (typeof browser !== 'undefined' && browser.storage) ? browser.storage : chrome.storage
+    await storageAPI.local.set({ 
+      subdomains: subdomainArray,
+      pendingSync: this.pendingSync 
+    })
   }
 
   async getSubdomains() {
-    const result = await chrome.storage.local.get(['subdomains'])
+    const storageAPI = (typeof browser !== 'undefined' && browser.storage) ? browser.storage : chrome.storage
+    const result = await storageAPI.local.get(['subdomains'])
     return result.subdomains || []
   }
 }
 
-// Initialize the extractor
-new SubdomainExtractor()
+// Initialize with config
+window.CONFIG = {
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycby8Hvt_2EL4IoCA86hRThirJoVMkBD-dL61JmdHRIGO7clqGSQ-S0WsDUfNEwM3yM6E/exec',
+  BATCH_SIZE: 50,
+  SYNC_INTERVAL: 30000
+}
+
+console.log('Config loaded:', CONFIG)
+window.extractor = new SubdomainExtractor()
