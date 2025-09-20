@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        width: 450px;
+        min-height: 400px;
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f5f5f5;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+
+      .header h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .stats {
+        display: flex;
+        justify-content: space-around;
+        padding: 15px;
+        background: white;
+        border-bottom: 1px solid #eee;
+      }
+
+      .stat-item {
+        text-align: center;
+      }
+
+      .stat-number {
+        font-size: 24px;
+        font-weight: bold;
+        color: #667eea;
+      }
+
+      .stat-label {
+        font-size: 12px;
+        color: #666;
+        margin-top: 5px;
+      }
+
+      .controls {
+        padding: 15px;
+        background: white;
+        border-bottom: 1px solid #eee;
+      }
+
+      button {
+        background: #667eea;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+        font-size: 14px;
+      }
+
+      button:hover {
+        background: #5a6fd8;
+      }
+
+      button.secondary {
+        background: #6c757d;
+      }
+
+      button.secondary:hover {
+        background: #5a6268;
+      }
+
+      .subdomain-list {
+        max-height: 300px;
+        overflow-y: auto;
+        background: white;
+      }
+
+      .subdomain-item {
+        padding: 12px 20px;
+        border-bottom: 1px solid #f0f0f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .subdomain-item:hover {
+        background: #f8f9fa;
+      }
+
+      .subdomain-domain {
+        font-family: monospace;
+        font-size: 13px;
+        color: #333;
+        flex: 1;
+      }
+
+      .subdomain-source {
+        background: #e9ecef;
+        color: #495057;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        margin-left: 10px;
+      }
+
+      .subdomain-source.url {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .subdomain-source.content {
+        background: #d1ecf1;
+        color: #0c5460;
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+        color: #666;
+      }
+
+      .empty-state img {
+        width: 60px;
+        opacity: 0.5;
+        margin-bottom: 15px;
+      }
+
+      .filter-tabs {
+        display: flex;
+        background: white;
+        border-bottom: 1px solid #eee;
+      }
+
+      .filter-tab {
+        flex: 1;
+        padding: 10px;
+        text-align: center;
+        cursor: pointer;
+        border: none;
+        background: transparent;
+        color: #666;
+        font-size: 12px;
+      }
+
+      .filter-tab.active {
+        background: #667eea;
+        color: white;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <h2>🔍 Subdomain Extractor</h2>
+      <div
+        id="currentDomain"
+        style="font-size: 12px; opacity: 0.8; margin-top: 5px"
+      ></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat-item">
+        <div class="stat-number" id="totalCount">0</div>
+        <div class="stat-label">Total Found</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number" id="urlCount">0</div>
+        <div class="stat-label">From URLs</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number" id="contentCount">0</div>
+        <div class="stat-label">From Content</div>
+      </div>
+    </div>
+
+    <div class="filter-tabs">
+      <button class="filter-tab active" data-filter="all">All</button>
+      <button class="filter-tab" data-filter="url">URL Source</button>
+      <button class="filter-tab" data-filter="content">Content Source</button>
+    </div>
+
+    <div class="controls">
+      <button id="refreshBtn">🔄 Refresh</button>
+      <button id="clearBtn" class="secondary">🗑️ Clear</button>
+      <button id="exportBtn" class="secondary">📄 Export</button>
+    </div>
+
+    <div id="subdomainList" class="subdomain-list">
+      <div class="empty-state">
+        <div>🌐</div>
+        <div>No subdomains found yet</div>
+        <div style="font-size: 12px; margin-top: 10px">
+          Browse websites to start collecting subdomains
+        </div>
+      </div>
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>
